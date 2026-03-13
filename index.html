@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phase 1 — Input Ingestion: Supabase Workflow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    padding: 32px 24px 60px;
+    color: #e0e0e0;
+    min-width: 520px;
+  }
+  .container { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .title-bar { border: 1px solid #3ECF8E; border-radius: 8px; padding: 10px 28px; font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; text-align: center; }
+  .title-sub  { font-size: 11px; color: #3ECF8E; margin-bottom: 20px; text-align: center; letter-spacing: 0.3px; }
+
+  .connector { width: 2px; background: #555; flex-shrink: 0; }
+  .connector.short  { height: 14px; }
+  .connector.medium { height: 20px; }
+  .connector.tall   { height: 28px; }
+
+  .arrow-down { width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid #555; flex-shrink: 0; }
+
+  .step { width: 100%; max-width: 360px; border-radius: 8px; padding: 10px 16px 12px; text-align: center; flex-shrink: 0; }
+  .step .step-title { font-size: 13.5px; font-weight: 700; margin-bottom: 3px; }
+  .step .step-sub   { font-size: 11.5px; font-weight: 400; opacity: 0.85; }
+
+  .step-purple { background: #3d3580; }
+  .step-purple .step-title { color: #d4cfff; }
+  .step-purple .step-sub   { color: #b0a8f0; }
+  .step-teal { background: #1a5c4a; }
+  .step-teal .step-title { color: #7ee8c8; }
+  .step-teal .step-sub   { color: #5bcaaa; }
+  .step-blue { background: #1a3a5c; }
+  .step-blue .step-title { color: #7ec8f8; }
+  .step-blue .step-sub   { color: #5aaae0; }
+  .step-coral { background: #7a2e18; }
+  .step-coral .step-title { color: #f4b89a; }
+  .step-coral .step-sub   { color: #e89070; }
+  .step-green { background: #1e4d20; }
+  .step-green .step-title { color: #90e898; }
+  .step-green .step-sub   { color: #6acc74; }
+
+  .detail { width: 100%; background: #2a2a2a; border-radius: 8px; padding: 12px 16px; font-size: 11.5px; color: #c0c0c0; line-height: 1.75; }
+  .detail .dim { color: #888; }
+  .detail .sb  { color: #3ECF8E; font-weight: 600; }
+
+  .step-row { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; position: relative; }
+  .annotation { font-size: 10.5px; white-space: nowrap; min-width: 110px; font-weight: 600; }
+  .annotation.green { color: #3ECF8E; }
+  .annotation.blue  { color: #7ec8f8; }
+  .annotation.gray  { color: #777; font-weight: 400; }
+  .annotation-spacer { min-width: 110px; }
+
+  .diamond { width: 140px; height: 62px; display: flex; align-items: center; justify-content: center; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); background: #2e2e2e; position: relative; z-index: 2; }
+  .diamond span { font-size: 11px; color: #ccc; text-align: center; }
+  .no-label  { font-size: 10.5px; color: #888; }
+  .error-box { background: #5c1a1a; border-radius: 6px; padding: 7px 12px; text-align: center; font-size: 11px; color: #f08080; font-weight: 600; white-space: nowrap; }
+
+  .branch-label { font-size: 10.5px; color: #888; margin-bottom: 4px; text-align: center; }
+  .mini-box   { border-radius: 6px; padding: 7px 10px; text-align: center; font-size: 11px; font-weight: 600; }
+  .mini-teal  { background: #1a5c4a; color: #7ee8c8; }
+  .mini-amber { background: #5c3a0a; color: #f4c060; }
+
+  .folder-box { width: 100%; background: #0d1f17; border: 1px solid #1a4030; border-radius: 8px; padding: 14px 18px; font-size: 11.5px; color: #c0c0c0; line-height: 1.9; }
+  .folder-box .folder-title { font-weight: 700; color: #3ECF8E; margin-bottom: 8px; font-size: 12px; }
+  .folder-box .dim  { color: #777; }
+  .folder-box .sbhl { color: #3ECF8E; font-weight: 600; }
+
+  .yes-label { font-size: 10.5px; color: #888; align-self: flex-start; margin-left: calc(50% + 6px); }
+
+  /* ── DOCS SECTION ── */
+  .docs-section { width: 100%; max-width: 860px; margin: 20px auto 0; padding: 0 8px; }
+  .docs-section-title { font-size: 20px; font-weight: 700; color: #e0e0e0; border-bottom: 1px solid #333; padding-bottom: 14px; margin-bottom: 28px; }
+
+  .storage-legend { display: flex; gap: 20px; flex-wrap: wrap; background: #0d1f17; border: 1px solid #1a4030; border-radius: 8px; padding: 12px 16px; margin-bottom: 36px; font-size: 11.5px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; color: #a0a0a0; }
+  .legend-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  .step-doc { margin-bottom: 48px; border-left: 3px solid #333; padding-left: 24px; }
+  .step-doc-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+
+  .step-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+  .badge-purple { background: #3d3580; color: #d4cfff; }
+  .badge-teal   { background: #1a5c4a; color: #7ee8c8; }
+  .badge-blue   { background: #1a3a5c; color: #7ec8f8; }
+  .badge-coral  { background: #7a2e18; color: #f4b89a; }
+  .badge-green  { background: #1e4d20; color: #90e898; }
+
+  .step-doc-title { font-size: 16px; font-weight: 700; color: #e8e8e8; }
+  .sb-badge { font-size: 10px; font-weight: 700; background: #0d2b1e; border: 1px solid #3ECF8E; color: #3ECF8E; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+
+  .step-doc p { font-size: 13.5px; color: #b0b0b0; line-height: 1.85; margin-bottom: 14px; }
+  .step-doc p strong { color: #d8d8d8; font-weight: 600; }
+  .step-doc ul { margin: 0 0 16px 0; padding-left: 20px; }
+  .step-doc ul li { font-size: 13.5px; color: #b0b0b0; line-height: 1.85; margin-bottom: 6px; }
+  .step-doc ul li strong { color: #d8d8d8; font-weight: 600; }
+
+  .example-block { background: #212121; border: 1px solid #333; border-radius: 8px; padding: 14px 18px; margin: 12px 0 16px; font-size: 12.5px; color: #a0a0a0; line-height: 1.75; }
+  .example-block.sb { background: #0d1f17; border-color: #1a4030; }
+  .example-block .ex-label { font-size: 10.5px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+  .example-block.sb .ex-label { color: #2a8060; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+
+  .code-block { background: #111; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px 18px; margin: 12px 0 16px; overflow-x: auto; }
+  .code-block.sb { border-color: #1a4030; }
+  .code-block .lang-label { font-size: 10px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .code-block.sb .lang-label { color: #2a8060; }
+  .code-block pre { font-size: 12px; color: #c8c8c8; line-height: 1.7; margin: 0; white-space: pre; }
+
+  .code-block .kw { color: #c792ea; }
+  .code-block .fn { color: #82aaff; }
+  .code-block .st { color: #c3e88d; }
+  .code-block .cm { color: #546e7a; font-style: italic; }
+  .code-block .nm { color: #f78c6c; }
+  .code-block .op { color: #89ddff; }
+  .code-block .sb { color: #3ECF8E; }
+
+  .divider { border: none; border-top: 1px solid #2a2a2a; margin: 0 0 48px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="title-bar">Phase 1 — Input Ingestion: Updated Workflow</div>
+  <div class="title-sub">Storage: Supabase Storage (files) · Supabase Postgres (metadata)</div>
+
+  <!-- STEP 1 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-purple">
+      <div class="step-title">Step 1 — User fills intake form</div>
+      <div class="step-sub">Project name · App URL · Env · Files · Creds · Endpoints</div>
+    </div>
+    <div class="annotation gray">FastAPI /ingest</div>
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 2 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-purple">
+      <div class="step-title">Step 2 — Validate inputs</div>
+      <div class="step-sub">Check required fields · Check file formats</div>
+    </div>
+    <div class="annotation gray"></div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail" style="width:100%;">
+    Required: project name, app URL, at least 1 file (BRD), at least 1 credential set<br>
+    Allowed formats: .pdf, .csv only · If invalid → return error, do not touch Supabase
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 3 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-purple">
+      <div class="step-title">Step 3 — Create project record</div>
+      <div class="step-sub">Generate project_id · Insert row into Supabase</div>
+    </div>
+    <div class="annotation blue">Supabase Postgres</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Generate UUID project_id · Insert into <span class="sb">projects</span> table:<br>
+    <span class="dim">project_id · project_name · app_url · environment · auth_type · created_at · status="ingestion_in_progress"</span>
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 4 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-teal">
+      <div class="step-title">Step 4 — URL health check</div>
+      <div class="step-sub">Ping app URL · Confirm 2xx response</div>
+    </div>
+    <div class="annotation gray">httpx GET</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    GET {app_url} with 10s timeout · 2xx → continue<br>
+    Fail → update Supabase <span class="sb">projects</span> status to "url_unreachable", return error to user
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- DIAMOND App reachable -->
+  <div style="width:100%; display:flex; align-items:center; justify-content:center; position:relative; margin: 4px 0;">
+    <div class="diamond"><span>App reachable?</span></div>
+    <div style="position:absolute; right:20px; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:6px;">
+      <div style="height:2px;width:55px;background:#555;"></div>
+      <span class="no-label">No</span>
+      <div class="error-box">Error to user<br>halt</div>
+    </div>
+  </div>
+  <div class="yes-label">Yes</div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 5 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-teal">
+      <div class="step-title">Step 5 — Upload raw files</div>
+      <div class="step-sub">Store original files in Supabase Storage</div>
+    </div>
+    <div class="annotation green">Supabase Storage</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Upload to Supabase Storage bucket <span class="sb">"documents"</span>:<br>
+    <span class="dim">{project_id}/raw/brd.pdf · {project_id}/raw/fsd.pdf etc.</span><br>
+    Record each path in Supabase <span class="sb">documents</span> table
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 6 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-teal">
+      <div class="step-title">Step 6 — Detect file type</div>
+      <div class="step-sub">PDF or CSV? Text-based or scanned?</div>
+    </div>
+    <div class="annotation gray"></div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Download file from Supabase Storage into memory · run PyMuPDF detection<br>
+    If extracted text &lt; 50 chars on multi-page doc → treat as scanned, route to Vision LLM
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- DIAMOND What type -->
+  <div style="width:100%; display:flex; flex-direction:column; align-items:center;">
+    <div style="width:100%; display:flex; align-items:flex-end; justify-content:center; gap:0; position:relative;">
+      <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+        <div class="branch-label">CSV</div>
+        <div style="display:flex; align-items:center; gap:0; width:100%; justify-content:flex-end;">
+          <div style="height:2px; flex:1; background:#555; max-width:80px;"></div>
+          <div class="arrow-down" style="transform:rotate(90deg);"></div>
+        </div>
+        <div class="mini-box mini-teal" style="margin-top:6px;">pandas<br>read_csv</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0; margin: 0 8px;">
+        <div class="diamond" style="width:130px; height:60px;"><span>What type?</span></div>
+        <div style="font-size:10.5px; color:#888; margin-top:3px;">Text PDF</div>
+        <div style="width:2px; height:18px; background:#555;"></div>
+        <div class="arrow-down"></div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+        <div class="branch-label">Scanned PDF</div>
+        <div style="display:flex; align-items:center; gap:0; width:100%; justify-content:flex-start;">
+          <div class="arrow-down" style="transform:rotate(-90deg);"></div>
+          <div style="height:2px; flex:1; background:#555; max-width:80px;"></div>
+        </div>
+        <div class="mini-box mini-amber" style="margin-top:6px;">pdf2image<br>→ Vision LLM</div>
+      </div>
+    </div>
+    <div style="width:100%; display:flex; justify-content:center; align-items:flex-end; height:28px; position:relative;">
+      
+      <div style="width:2px; height:28px; background:#555;"></div>
+    </div>
+    <!-- <div class="arrow-down"></div><div class="connector short"></div> -->
+  </div>
+
+  <!-- STEP 7 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-teal">
+      <div class="step-title">Step 7 — Extract raw text</div>
+      <div class="step-sub">Pull all text from file, no filtering</div>
+    </div>
+    <div class="annotation gray">PyMuPDF / Vision LLM</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Text PDF → PyMuPDF in memory · Scanned PDF → pdf2image → Vision LLM per page<br>
+    CSV → pandas in memory · All 3 paths → same plain text string output
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 8 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-blue">
+      <div class="step-title">Step 8 — Upload extracted text</div>
+      <div class="step-sub">Write .txt per document to Supabase Storage</div>
+    </div>
+    <div class="annotation green">Supabase Storage</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Upload plain text to Supabase Storage bucket <span class="sb">"documents"</span>:<br>
+    <span class="dim">{project_id}/extracted/brd.txt · {project_id}/extracted/fsd.txt etc.</span><br>
+    Update Supabase <span class="sb">documents</span> table: set extracted_path + is_scanned flag
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 9 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-coral">
+      <div class="step-title">Step 9 — Store API endpoints</div>
+      <div class="step-sub">Parse Swagger or save manual entries</div>
+    </div>
+    <div class="annotation green">Supabase Storage</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Swagger URL → fetch + parse OpenAPI JSON · Manual → build JSON from user rows<br>
+    Upload to Supabase Storage: <span class="sb">{project_id}/endpoints.json</span>
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 10 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-coral">
+      <div class="step-title">Step 10 — Store credentials</div>
+      <div class="step-sub">Fernet encrypt · Insert into Supabase</div>
+    </div>
+    <div class="annotation blue">Supabase Postgres</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Encrypt password + TOTP with Fernet before inserting<br>
+    Insert into Supabase <span class="sb">credentials</span> table: role_name · username · encrypted_password · login_url · totp_secret<br>
+    Never log or store raw passwords anywhere
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- STEP 11 -->
+  <div class="step-row">
+    <div class="annotation-spacer"></div>
+    <div class="step step-blue">
+      <div class="step-title">Step 11 — Update project status</div>
+      <div class="step-sub">Mark ingestion complete in Supabase</div>
+    </div>
+    <div class="annotation blue">Supabase Postgres</div>
+  </div>
+  <div class="connector short"></div>
+  <div class="detail">
+    Update Supabase <span class="sb">projects</span>: status = "ingestion_complete", ingestion_completed_at = now()<br>
+    Upload <span class="sb">{project_id}/meta.json</span> to Supabase Storage
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- COMPLETE -->
+  <div class="step step-green" style="max-width:100%; width:100%;">
+    <div class="step-title">Phase 1 complete — context package ready</div>
+    <div class="step-sub">All files in Supabase Storage · Metadata in Supabase Postgres · Phase 2 takes over</div>
+  </div>
+  <div class="connector short"></div>
+
+  <!-- STORAGE LAYOUT -->
+  <div class="folder-box">
+    <div class="folder-title">Supabase layout after Phase 1</div>
+    <span class="sbhl">Storage bucket "documents"/</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;{project_id}/raw/ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← original uploaded files</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;{project_id}/extracted/ &nbsp;← plain .txt per document</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;{project_id}/endpoints.json</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;{project_id}/meta.json</span><br><br>
+    <span class="sbhl">Postgres tables:</span> <span class="dim">projects · documents · credentials</span><br><br>
+    
+  </div>
+  <div class="connector short"></div><div class="arrow-down"></div><div class="connector short"></div>
+
+  <!-- PHASE 2 -->
+  <div class="step step-purple" style="max-width:100%; width:100%;">
+    <div class="step-title">→ Phase 2</div>
+    <div class="step-sub">UI Discovery + Requirements Analyst Agent </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════ DOCS ═══════════════════════════════════ -->
+<div class="docs-section">
+  <div class="docs-section-title">Detailed Step Explanations</div>
+
+  <div class="storage-legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#3ECF8E;"></div>Supabase Storage — files (PDFs, .txt, JSON)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7ec8f8;"></div>Supabase Postgres — metadata &amp; credentials</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#c792ea;"></div>pgvector — embeddings (Phase 2 only)</div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-purple">Step 1</span>
+      <span class="step-doc-title">User fills intake form</span>
+    </div>
+    <p>This is the entry point of your entire system. The user opens your web UI or hits your API and submits all the information needed to start a project.</p>
+    <ul>
+      <li><strong>Project name</strong> — e.g. <code>"Health Insurance Portal"</code>. Backend converts it to a slug like <code>health-insurance-portal</code>.</li>
+      <li><strong>App URL</strong> — the website to test. e.g. <code>https://staging.healthportal.com</code>. Playwright will open this later.</li>
+      <li><strong>Environment</strong> — dropdown: <code>staging</code>, <code>dev</code>, or <code>production</code>.</li>
+      <li><strong>Files</strong> — user uploads <code>brd.pdf</code>, <code>fsd.pdf</code>, etc.</li>
+      <li><strong>Auth type</strong> — <code>JWT</code>, <code>session cookie</code>, or <code>OAuth</code>.</li>
+      <li><strong>API endpoints</strong> — Swagger URL or manually entered rows.</li>
+    </ul>
+    <div class="example-block">
+      <div class="ex-label">Example — credentials table</div>
+      Role: admin | Email: admin@test.com | Password: Admin@123<br>
+      Role: user  | Email: user@test.com  | Password: User@123<br>
+      Role: guest | Email: guest@test.com | Password: Guest@123
+    </div>
+    <p>FastAPI receives all of this as a single POST request and passes it down the pipeline.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 2 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-purple">Step 2</span>
+      <span class="step-doc-title">Validate inputs</span>
+    </div>
+    <p>Catch mistakes before touching Supabase at all. If any check fails, return an error and stop — no rows inserted, no files uploaded.</p>
+    <ul>
+      <li><strong>Project name present?</strong> If blank → <code>"Project name is required"</code>.</li>
+      <li><strong>App URL valid?</strong> Must start with <code>http://</code> or <code>https://</code>.</li>
+      <li><strong>At least one file uploaded?</strong> Minimum one BRD required.</li>
+      <li><strong>File format allowed?</strong> Only <code>.pdf</code> and <code>.csv</code>. Reject <code>.docx</code>, <code>.xlsx</code> etc.</li>
+      <li><strong>At least one credential set?</strong> Phase 3 Playwright sessions need something to log in with.</li>
+    </ul>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 3 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-purple">Step 3</span>
+      <span class="step-doc-title">Create project record &nbsp;<span class="sb-badge">Supabase Postgres</span></span>
+    </div>
+    <p>Insert a row into the Supabase <code>projects</code> table. This is the source of truth — every later step updates this row, and Phase 2 agents query it.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — supabase-py</div>
+      <pre><span class="kw">import</span> uuid, os
+<span class="kw">from</span> supabase <span class="kw">import</span> create_client
+
+<span class="sb">supabase</span> <span class="op">=</span> create_client(
+    os.environ[<span class="st">"SUPABASE_URL"</span>],
+    os.environ[<span class="st">"SUPABASE_KEY"</span>]
+)
+
+project_id <span class="op">=</span> <span class="fn">str</span>(uuid.<span class="fn">uuid4</span>())
+<span class="cm"># "a3f2c1d4-9e87-4b2a-bc13-5f7d9e2a1c88"</span>
+
+<span class="sb">supabase</span>.table(<span class="st">"projects"</span>).<span class="fn">insert</span>({
+    <span class="st">"project_id"</span>:   project_id,
+    <span class="st">"project_name"</span>: <span class="st">"Health Insurance Portal"</span>,
+    <span class="st">"app_url"</span>:      <span class="st">"https://staging.healthportal.com"</span>,
+    <span class="st">"environment"</span>:  <span class="st">"staging"</span>,
+    <span class="st">"auth_type"</span>:    <span class="st">"JWT"</span>,
+    <span class="st">"status"</span>:       <span class="st">"ingestion_in_progress"</span>
+}).<span class="fn">execute</span>()</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">Row in Supabase projects table</div>
+      project_id:   a3f2c1d4-9e87-4b2a-bc13-5f7d9e2a1c88<br>
+      project_name: Health Insurance Portal<br>
+      app_url:      https://staging.healthportal.com<br>
+      environment:  staging · auth_type: JWT<br>
+      status:       ingestion_in_progress<br>
+      created_at:   2024-01-15 10:32:00 (auto by Postgres)
+    </div>
+    <p>The <strong>status field</strong> controls the pipeline. Phase 2 queries Supabase and only picks up rows where <code>status = 'ingestion_complete'</code>.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 4 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-teal">Step 4</span>
+      <span class="step-doc-title">URL health check</span>
+    </div>
+    <p>Send a GET request to the app URL. If it fails, update the Supabase <code>projects</code> row status and halt — no point processing files for an unreachable app.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python</div>
+      <pre><span class="kw">import</span> httpx
+
+<span class="kw">try</span>:
+    response <span class="op">=</span> httpx.<span class="fn">get</span>(app_url, timeout<span class="op">=</span><span class="nm">10</span>)
+    <span class="kw">if</span> response.status_code <span class="op">&gt;=</span> <span class="nm">400</span>:
+        <span class="sb">supabase</span>.table(<span class="st">"projects"</span>).<span class="fn">update</span>(
+            {<span class="st">"status"</span>: <span class="st">"url_unreachable"</span>}
+        ).<span class="fn">eq</span>(<span class="st">"project_id"</span>, project_id).<span class="fn">execute</span>()
+        <span class="kw">return</span> <span class="fn">error</span>(<span class="st">"App returned status "</span> <span class="op">+</span> <span class="fn">str</span>(response.status_code))
+<span class="kw">except</span> httpx.TimeoutException:
+    <span class="sb">supabase</span>.table(<span class="st">"projects"</span>).<span class="fn">update</span>(
+        {<span class="st">"status"</span>: <span class="st">"url_unreachable"</span>}
+    ).<span class="fn">eq</span>(<span class="st">"project_id"</span>, project_id).<span class="fn">execute</span>()
+    <span class="kw">return</span> <span class="fn">error</span>(<span class="st">"App did not respond within 10 seconds"</span>)</pre>
+    </div>
+    <div class="example-block">
+      <div class="ex-label">Real example</div>
+      Staging server was shut down over the weekend. Health check times out. Supabase <code>projects</code> row updated to <code>url_unreachable</code>. User sees: <em>"The app is not responding. Please check the URL."</em>
+    </div>
+    <p>On success, optionally store the response headers (e.g. <code>X-Powered-By: Express</code>) in the Supabase row — useful tech stack context for later agents.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 5 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-teal">Step 5</span>
+      <span class="step-doc-title">Upload raw files &nbsp;<span class="sb-badge">Supabase Storage</span></span>
+    </div>
+    <p>Upload the original files as-is to <strong>Supabase Storage</strong> — a managed S3-compatible bucket. No local disk, no server folders. Files survive server restarts and are accessible from any agent in any phase.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — Supabase Storage</div>
+      <pre><span class="kw">for</span> uploaded_file <span class="kw">in</span> files:
+    file_bytes    <span class="op">=</span> <span class="kw">await</span> uploaded_file.<span class="fn">read</span>()
+    storage_path  <span class="op">=</span> <span class="st">f"{project_id}/raw/{uploaded_file.filename}"</span>
+
+    <span class="cm"># Upload to Supabase Storage bucket "documents"</span>
+    <span class="sb">supabase</span>.storage.<span class="fn">from_</span>(<span class="st">"documents"</span>).<span class="fn">upload</span>(
+        path<span class="op">=</span>storage_path,
+        file<span class="op">=</span>file_bytes,
+        file_options<span class="op">=</span>{<span class="st">"content-type"</span>: <span class="st">"application/pdf"</span>}
+    )
+
+    <span class="cm"># Record path in Supabase documents table</span>
+    <span class="sb">supabase</span>.table(<span class="st">"documents"</span>).<span class="fn">insert</span>({
+        <span class="st">"project_id"</span>:    project_id,
+        <span class="st">"original_name"</span>: uploaded_file.filename,
+        <span class="st">"raw_path"</span>:      storage_path
+    }).<span class="fn">execute</span>()</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">Result in Supabase</div>
+      Storage → <code>documents/a3f2c1.../raw/brd_v3_final.pdf</code><br>
+      Postgres <code>documents</code> table → row with raw_path recorded
+    </div>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 6 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-teal">Step 6</span>
+      <span class="step-doc-title">Detect file type</span>
+    </div>
+    <p>Download the file from Supabase Storage into memory, then run detection. Two questions: is it PDF or CSV? And if PDF, is it text-based or scanned?</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — download from Supabase then detect</div>
+      <pre><span class="kw">import</span> fitz
+<span class="kw">from</span> io <span class="kw">import</span> BytesIO
+
+<span class="cm"># Download from Supabase Storage into memory — no local disk needed</span>
+file_bytes <span class="op">=</span> <span class="sb">supabase</span>.storage.<span class="fn">from_</span>(<span class="st">"documents"</span>).<span class="fn">download</span>(raw_path)
+
+<span class="kw">def</span> <span class="fn">is_scanned</span>(pdf_bytes):
+    doc <span class="op">=</span> fitz.<span class="fn">open</span>(stream<span class="op">=</span>pdf_bytes, filetype<span class="op">=</span><span class="st">"pdf"</span>)
+    total_text <span class="op">=</span> <span class="st">""</span>.<span class="fn">join</span>(page.<span class="fn">get_text</span>() <span class="kw">for</span> page <span class="kw">in</span> doc)
+    <span class="kw">return</span> <span class="fn">len</span>(doc) <span class="op">&gt;</span> <span class="nm">2</span> <span class="kw">and</span> <span class="fn">len</span>(total_text.<span class="fn">strip</span>()) <span class="op">&lt;</span> <span class="nm">50</span></pre>
+    </div>
+    <div class="example-block">
+      <div class="ex-label">Scanned example</div>
+      15-page insurance policy. PyMuPDF extracts 3 chars total → flagged scanned → Vision LLM path.
+    </div>
+    <div class="example-block">
+      <div class="ex-label">Text-based example</div>
+      PDF exported from Word. Thousands of characters extracted immediately → normal PyMuPDF path.
+    </div>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 7 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-teal">Step 7</span>
+      <span class="step-doc-title">Extract raw text</span>
+    </div>
+    <p>Three sub-paths — all operating on bytes in memory (already downloaded from Supabase in Step 6). All three produce the same output: one plain text string.</p>
+    <p><strong>Path A — Text PDF via PyMuPDF:</strong></p>
+    <div class="code-block">
+      <div class="lang-label">Python</div>
+      <pre><span class="kw">def</span> <span class="fn">extract_pdf</span>(pdf_bytes):
+    doc <span class="op">=</span> fitz.<span class="fn">open</span>(stream<span class="op">=</span>pdf_bytes, filetype<span class="op">=</span><span class="st">"pdf"</span>)
+    <span class="kw">return</span> <span class="st">""</span>.<span class="fn">join</span>(
+        <span class="st">f"\n--- Page {i+1} ---\n"</span> <span class="op">+</span> page.<span class="fn">get_text</span>()
+        <span class="kw">for</span> i, page <span class="kw">in</span> <span class="fn">enumerate</span>(doc)
+    )</pre>
+    </div>
+    <p><strong>Path B — Scanned PDF via Vision LLM:</strong></p>
+    <div class="code-block">
+      <div class="lang-label">Python</div>
+      <pre><span class="kw">from</span> pdf2image <span class="kw">import</span> convert_from_bytes
+<span class="kw">import</span> anthropic, base64
+
+client <span class="op">=</span> anthropic.<span class="fn">Anthropic</span>()
+
+<span class="kw">def</span> <span class="fn">extract_scanned</span>(pdf_bytes):
+    images <span class="op">=</span> <span class="fn">convert_from_bytes</span>(pdf_bytes, dpi<span class="op">=</span><span class="nm">200</span>)
+    full_text <span class="op">=</span> <span class="st">""</span>
+    <span class="kw">for</span> img <span class="kw">in</span> images:
+        buf <span class="op">=</span> BytesIO()
+        img.<span class="fn">save</span>(buf, format<span class="op">=</span><span class="st">"PNG"</span>)
+        b64 <span class="op">=</span> base64.<span class="fn">b64encode</span>(buf.<span class="fn">getvalue</span>()).<span class="fn">decode</span>()
+        resp <span class="op">=</span> client.messages.<span class="fn">create</span>(
+            model<span class="op">=</span><span class="st">"claude-opus-4-5"</span>, max_tokens<span class="op">=</span><span class="nm">4096</span>,
+            messages<span class="op">=</span>[{<span class="st">"role"</span>: <span class="st">"user"</span>, <span class="st">"content"</span>: [
+                {<span class="st">"type"</span>: <span class="st">"image"</span>, <span class="st">"source"</span>: {<span class="st">"type"</span>: <span class="st">"base64"</span>,
+                    <span class="st">"media_type"</span>: <span class="st">"image/png"</span>, <span class="st">"data"</span>: b64}},
+                {<span class="st">"type"</span>: <span class="st">"text"</span>, <span class="st">"text"</span>: <span class="st">"Extract all text from this page exactly."</span>}
+            ]}]
+        )
+        full_text <span class="op">+=</span> resp.content[<span class="nm">0</span>].text
+    <span class="kw">return</span> full_text</pre>
+    </div>
+    <p><strong>Path C — CSV via pandas:</strong></p>
+    <div class="code-block">
+      <div class="lang-label">Python</div>
+      <pre><span class="kw">import</span> pandas <span class="kw">as</span> pd
+
+<span class="kw">def</span> <span class="fn">extract_csv</span>(csv_bytes):
+    df <span class="op">=</span> pd.<span class="fn">read_csv</span>(BytesIO(csv_bytes))
+    <span class="kw">return</span> df.<span class="fn">to_string</span>(index<span class="op">=</span><span class="kw">False</span>)</pre>
+    </div>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 8 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-blue">Step 8</span>
+      <span class="step-doc-title">Upload extracted text &nbsp;<span class="sb-badge">Supabase Storage</span></span>
+    </div>
+    <p>Take the plain text string from Step 7 and upload it as a <code>.txt</code> file to Supabase Storage. Then update the <code>documents</code> table with the extracted path and scanned flag.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — Supabase Storage + Postgres update</div>
+      <pre>txt_name       <span class="op">=</span> original_name.<span class="fn">rsplit</span>(<span class="st">"."</span>, <span class="nm">1</span>)[<span class="nm">0</span>] <span class="op">+</span> <span class="st">".txt"</span>
+extracted_path <span class="op">=</span> <span class="st">f"{project_id}/extracted/{txt_name}"</span>
+
+<span class="cm"># Upload .txt to Supabase Storage</span>
+<span class="sb">supabase</span>.storage.<span class="fn">from_</span>(<span class="st">"documents"</span>).<span class="fn">upload</span>(
+    path<span class="op">=</span>extracted_path,
+    file<span class="op">=</span>extracted_text.<span class="fn">encode</span>(<span class="st">"utf-8"</span>),
+    file_options<span class="op">=</span>{<span class="st">"content-type"</span>: <span class="st">"text/plain"</span>}
+)
+
+<span class="cm"># Update documents table with path + scanned flag</span>
+<span class="sb">supabase</span>.table(<span class="st">"documents"</span>).<span class="fn">update</span>({
+    <span class="st">"extracted_path"</span>: extracted_path,
+    <span class="st">"is_scanned"</span>:     is_scanned_flag
+}).<span class="fn">eq</span>(<span class="st">"project_id"</span>, project_id).<span class="fn">eq</span>(<span class="st">"original_name"</span>, original_name).<span class="fn">execute</span>()</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">Supabase Storage after Step 8</div>
+      documents/a3f2c1.../<br>
+      &nbsp;&nbsp;raw/brd.pdf &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← Step 5<br>
+      &nbsp;&nbsp;raw/fsd.pdf &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← Step 5<br>
+      &nbsp;&nbsp;extracted/brd.txt &nbsp;← uploaded now<br>
+      &nbsp;&nbsp;extracted/fsd.txt &nbsp;← uploaded now
+    </div>
+    <p>Phase 2 agents retrieve text by calling <code>supabase.storage.from_("documents").download(extracted_path)</code>. They get the path from the <code>documents</code> table — no folder scanning needed.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 9 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-coral">Step 9</span>
+      <span class="step-doc-title">Store API endpoints &nbsp;<span class="sb-badge">Supabase Storage</span></span>
+    </div>
+    <p>Build the endpoints list from Swagger or manual input, then upload it as <code>endpoints.json</code> to Supabase Storage.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — Supabase Storage</div>
+      <pre><span class="kw">import</span> json, httpx
+
+<span class="cm"># If Swagger URL — auto-parse all endpoints</span>
+swagger_data <span class="op">=</span> httpx.<span class="fn">get</span>(swagger_url).<span class="fn">json</span>()
+endpoints <span class="op">=</span> []
+<span class="kw">for</span> path, methods <span class="kw">in</span> swagger_data[<span class="st">"paths"</span>].<span class="fn">items</span>():
+    <span class="kw">for</span> method, details <span class="kw">in</span> methods.<span class="fn">items</span>():
+        endpoints.<span class="fn">append</span>({
+            <span class="st">"method"</span>:        method.<span class="fn">upper</span>(),
+            <span class="st">"path"</span>:          path,
+            <span class="st">"description"</span>:   details.<span class="fn">get</span>(<span class="st">"summary"</span>, <span class="st">""</span>),
+            <span class="st">"auth_required"</span>: <span class="st">"security"</span> <span class="kw">in</span> details
+        })
+
+<span class="cm"># Upload endpoints.json to Supabase Storage</span>
+<span class="sb">supabase</span>.storage.<span class="fn">from_</span>(<span class="st">"documents"</span>).<span class="fn">upload</span>(
+    path<span class="op">=</span><span class="st">f"{project_id}/endpoints.json"</span>,
+    file<span class="op">=</span>json.<span class="fn">dumps</span>(endpoints, indent<span class="op">=</span><span class="nm">2</span>).<span class="fn">encode</span>(),
+    file_options<span class="op">=</span>{<span class="st">"content-type"</span>: <span class="st">"application/json"</span>}
+)</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">endpoints.json in Supabase Storage</div>
+      [<br>
+      &nbsp;&nbsp;{ "method": "POST", "path": "/api/auth/login",     "auth_required": false },<br>
+      &nbsp;&nbsp;{ "method": "GET",  "path": "/api/users/profile",  "auth_required": true  },<br>
+      &nbsp;&nbsp;{ "method": "POST", "path": "/api/claims/submit",   "auth_required": true  }<br>
+      ]
+    </div>
+    <p>Phase 3 downloads this file from Supabase Storage when a test fails to classify it: UI bug vs API error.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 10 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-coral">Step 10</span>
+      <span class="step-doc-title">Store credentials &nbsp;<span class="sb-badge">Supabase Postgres</span></span>
+    </div>
+    <p>Encrypt credentials with Fernet, then insert into the Supabase <code>credentials</code> table. <strong>Never store a plain text password anywhere</strong> — not in Supabase, not in logs, nowhere.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — Fernet encrypt → Supabase Postgres</div>
+      <pre><span class="kw">from</span> cryptography.fernet <span class="kw">import</span> Fernet
+
+<span class="cm"># Key lives in env variable — NEVER hardcode</span>
+fernet <span class="op">=</span> <span class="fn">Fernet</span>(os.environ[<span class="st">"CREDENTIAL_ENCRYPTION_KEY"</span>])
+
+<span class="kw">def</span> <span class="fn">encrypt</span>(plain): <span class="kw">return</span> fernet.<span class="fn">encrypt</span>(plain.<span class="fn">encode</span>()).<span class="fn">decode</span>()
+<span class="kw">def</span> <span class="fn">decrypt</span>(enc):   <span class="kw">return</span> fernet.<span class="fn">decrypt</span>(enc.<span class="fn">encode</span>()).<span class="fn">decode</span>()
+
+<span class="kw">for</span> cred <span class="kw">in</span> credentials:
+    <span class="sb">supabase</span>.table(<span class="st">"credentials"</span>).<span class="fn">insert</span>({
+        <span class="st">"project_id"</span>:         project_id,
+        <span class="st">"role_name"</span>:          cred[<span class="st">"role"</span>],
+        <span class="st">"username"</span>:           cred[<span class="st">"email"</span>],
+        <span class="st">"encrypted_password"</span>: <span class="fn">encrypt</span>(cred[<span class="st">"password"</span>]),
+        <span class="st">"login_url"</span>:          cred.<span class="fn">get</span>(<span class="st">"login_url"</span>, app_url <span class="op">+</span> <span class="st">"/login"</span>),
+        <span class="st">"totp_secret"</span>:        <span class="fn">encrypt</span>(cred[<span class="st">"totp_secret"</span>]) <span class="kw">if</span> cred.<span class="fn">get</span>(<span class="st">"totp_secret"</span>) <span class="kw">else</span> <span class="kw">None</span>
+    }).<span class="fn">execute</span>()</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">Row in Supabase credentials table</div>
+      role_name: admin<br>
+      username:  admin@test.com<br>
+      password:  gAAAAABl7k2X9mPqR... &nbsp;<em>(encrypted — useless without the key)</em><br>
+      login_url: https://staging.healthportal.com/admin/login
+    </div>
+    <p>When Phase 3 needs to log in, it queries Supabase, calls <code>decrypt()</code> at runtime, uses the password for Playwright, then immediately discards it. Decrypted password never touches disk or any log.</p>
+  </div>
+  <hr class="divider">
+
+  <!-- STEP 11 -->
+  <div class="step-doc">
+    <div class="step-doc-header">
+      <span class="step-badge badge-blue">Step 11</span>
+      <span class="step-doc-title">Update project status &nbsp;<span class="sb-badge">Supabase Postgres + Storage</span></span>
+    </div>
+    <p>Update the Supabase <code>projects</code> row to <code>ingestion_complete</code>, then upload a <code>meta.json</code> summary to Supabase Storage for agents to read quickly.</p>
+    <div class="code-block sb">
+      <div class="lang-label">Python — Supabase Postgres</div>
+      <pre><span class="kw">from</span> datetime <span class="kw">import</span> datetime
+
+<span class="sb">supabase</span>.table(<span class="st">"projects"</span>).<span class="fn">update</span>({
+    <span class="st">"status"</span>:                 <span class="st">"ingestion_complete"</span>,
+    <span class="st">"ingestion_completed_at"</span>: datetime.<span class="fn">utcnow</span>().<span class="fn">isoformat</span>()
+}).<span class="fn">eq</span>(<span class="st">"project_id"</span>, project_id).<span class="fn">execute</span>()</pre>
+    </div>
+    <div class="code-block sb">
+      <div class="lang-label">Python — upload meta.json to Supabase Storage</div>
+      <pre">meta <span class="op">=</span> {
+    <span class="st">"project_id"</span>:             project_id,
+    <span class="st">"project_name"</span>:           project_name,
+    <span class="st">"app_url"</span>:                app_url,
+    <span class="st">"environment"</span>:            environment,
+    <span class="st">"auth_type"</span>:              auth_type,
+    <span class="st">"documents"</span>:              [<span class="st">"brd.txt"</span>, <span class="st">"fsd.txt"</span>],
+    <span class="st">"status"</span>:                 <span class="st">"ingestion_complete"</span>,
+    <span class="st">"ingestion_completed_at"</span>: datetime.<span class="fn">utcnow</span>().<span class="fn">isoformat</span>()
+}
+<span class="sb">supabase</span>.storage.<span class="fn">from_</span>(<span class="st">"documents"</span>).<span class="fn">upload</span>(
+    path<span class="op">=</span><span class="st">f"{project_id}/meta.json"</span>,
+    file<span class="op">=</span>json.<span class="fn">dumps</span>(meta, indent<span class="op">=</span><span class="nm">2</span>).<span class="fn">encode</span>(),
+    file_options<span class="op">=</span>{<span class="st">"content-type"</span>: <span class="st">"application/json"</span>}
+)</pre>
+    </div>
+    <div class="example-block sb">
+      <div class="ex-label">Final Supabase state after Phase 1</div>
+      <strong style="color:#3ECF8E;">Storage "documents"/</strong><br>
+      &nbsp;&nbsp;a3f2c1.../raw/brd.pdf, raw/fsd.pdf<br>
+      &nbsp;&nbsp;a3f2c1.../extracted/brd.txt, extracted/fsd.txt<br>
+      &nbsp;&nbsp;a3f2c1.../endpoints.json<br>
+      &nbsp;&nbsp;a3f2c1.../meta.json<br><br>
+      <strong style="color:#7ec8f8;">Postgres tables</strong><br>
+      &nbsp;&nbsp;projects → 1 row · status = "ingestion_complete"<br>
+      &nbsp;&nbsp;documents → 2 rows (brd + fsd) · raw_path + extracted_path set<br>
+      &nbsp;&nbsp;credentials → 3 rows (admin, user, guest) · passwords encrypted
+    </div>
+    
+  </div>
+
+</div>
+</body>
+</html>
