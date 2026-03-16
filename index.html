@@ -138,208 +138,144 @@
 
 <div class="container">
 
-    <div class="title-bar">Phase 1 — Input Ingestion: Updated Workflow</div>
-    <div class="title-sub">Processing: In-Memory Extraction · Chunking · Embeddings · Vector DB</div>
+    <div class="title-bar">Phase 1 — Input Ingestion: Production Workflow</div>
+    <div class="title-sub">Processing: Azure Storage · PostgreSQL · Health/Auth Verification · RAG</div>
 
     <div class="step step-purple">
         <div class="step-title">Step 1 — User fills intake form</div>
-        <div class="step-sub">Project name · App URL · Env · Files · Creds · Endpoints</div>
+        <div class="step-sub">Project, URL, Files (BRD/FWB/WSB), Assumptions, Creds, Endpoints</div>
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-purple">
-        <div class="step-title">Step 2 — Validate inputs</div>
-        <div class="step-sub">Check required fields · Check file formats</div>
+        <div class="step-title">Step 2 — Initialize PostgreSQL Record</div>
+        <div class="step-sub">Create project_id · Store metadata & assumptions</div>
     </div>
     <div class="flow-detail">
-        Required: project name, app URL, at least 1 file (BRD), at least 1 credential set<br>
-        Allowed formats: .pdf, .csv only
-    </div>
-    <div class="connector"></div>
-    <div class="arrow-down"></div>
-
-    <div class="step step-purple">
-        <div class="step-title">Step 3 — Create project record</div>
-        <div class="step-sub">Generate project_id · Save metadata</div>
+        PostgreSQL stores: name, app_url, user assumptions, and raw API endpoint list.
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-teal">
-        <div class="step-title">Step 4 — URL health check</div>
-        <div class="step-sub">Ping app URL · Confirm 2xx response</div>
+        <div class="step-title">Step 3 — URL & Credential Verification</div>
+        <div class="step-sub">Ping URL · Functional login check with provided creds</div>
     </div>
     <div class="flow-detail">
-        GET {app_url} with 10s timeout<br>
-        If unreachable → stop ingestion and notify user
+        Verify App URL is live (2xx)<br>
+        Attempt Auth handshake with Creds/Endpoints<br>
+        If fail → Stop ingestion & notify user
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-teal">
-        <div class="step-title">Step 5 — Process uploaded files</div>
-        <div class="step-sub">Files handled directly in memory</div>
+        <div class="step-title">Step 4 — Upload to Azure Blob Storage</div>
+        <div class="step-sub">Store .pdf and .docx files permanently</div>
     </div>
     <div class="flow-detail">
-        Uploaded files are immediately processed in memory.<br>
-        No raw documents are written to disk or object storage.
+        Upload files to Azure Bucket.<br>
+        Save Azure file URLs into PostgreSQL 'Files' table.
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-teal">
-        <div class="step-title">Step 6 — Detect file type</div>
-        <div class="step-sub">PDF or CSV? Text-based or scanned?</div>
+        <div class="step-title">Step 5 — Extract text from documents</div>
+        <div class="step-sub">Direct text parsing (No OCR required)</div>
     </div>
     <div class="flow-detail">
-        PDF → PyMuPDF extraction<br>
-        Scanned PDF → Vision LLM OCR<br>
-        CSV → pandas read_csv
-    </div>
-    <div class="connector"></div>
-    <div class="arrow-down"></div>
-
-    <div class="step step-teal">
-        <div class="step-title">Step 7 — Extract raw text</div>
-        <div class="step-sub">Pull all text from file</div>
-    </div>
-    <div class="flow-detail">
-        Text PDF → PyMuPDF<br>
-        Scanned PDF → OCR with Vision Model<br>
-        CSV → pandas conversion
+        PDF → PyMuPDF<br>
+        DOCX → python-docx
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-blue">
-        <div class="step-title">Step 8 — Chunk document text</div>
-        <div class="step-sub">Split text into smaller semantic sections</div>
+        <div class="step-title">Step 6 — Chunk text & assumptions</div>
+        <div class="step-sub">Split content into semantic sections</div>
     </div>
     <div class="flow-detail">
-        Chunking prepares BRD content for semantic retrieval in the RAG system.
+        Combines document content and manually provided assumptions for better RAG context.
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-blue">
-        <div class="step-title">Step 9 — Generate embeddings</div>
+        <div class="step-title">Step 7 — Generate embeddings</div>
         <div class="step-sub">Convert chunks into vector representations</div>
     </div>
-    <div class="flow-detail">
-        Embedding models convert each text chunk into a high-dimensional vector.
-        These vectors represent the semantic meaning of the BRD content.
-    </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-coral">
-        <div class="step-title">Step 10 — Store embeddings</div>
-        <div class="step-sub">Save vectors in the vector database</div>
+        <div class="step-title">Step 8 — Store in Vector Database (pgvector)</div>
+        <div class="step-sub">Link vectors to project_id in PostgreSQL</div>
     </div>
     <div class="flow-detail">
-        Vector DB stores:<br>
-        project_id, document_type, chunk_text, embedding_vector
-    </div>
-    <div class="connector"></div>
-    <div class="arrow-down"></div>
-
-    <div class="step step-coral">
-        <div class="step-title">Step 11 — Store credentials</div>
-        <div class="step-sub">Encrypt credentials for test execution</div>
+        Relational table links the vector to the project metadata for structured retrieval.
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-green" style="width:100%; max-width: 400px;">
-        <div class="step-title">Phase 1 complete — context package ready</div>
-        <div class="step-sub">Vector database contains BRD embeddings · Phase 2 takes over</div>
+        <div class="step-title">Phase 1 complete — Data Grounded</div>
+        <div class="step-sub">Status: ingestion_complete · Files stored in Azure · Knowledge in Postgres</div>
     </div>
     <div class="connector"></div>
     <div class="arrow-down"></div>
 
     <div class="step step-purple" style="width:100%; max-width: 400px;">
         <div class="step-title">→ Phase 2</div>
-        <div class="step-sub">UI Discovery + Requirements Analyst Agent · RAG Retrieval</div>
+        <div class="step-sub">UI Discovery & Agentic Requirements Generation</div>
     </div>
 
     <div class="doc-section">
         
         <div class="step-doc">
             <div class="step-doc-header">
-                <span class="step-badge badge-purple">Step 1</span>
-                <span class="step-doc-title">User fills intake form</span>
+                <span class="step-badge badge-purple">Step 1 & 2</span>
+                <span class="step-doc-title">Intake & PostgreSQL Initialization</span>
             </div>
-            <p>This is the entry point of the system. The user opens the web UI or calls the ingestion API and submits the required information to start a testing project.</p>
+            <p>The system captures the expanded intake data and immediately persists it into a PostgreSQL relational database.</p>
             <ul>
-                <li><strong>Project name</strong> — e.g. <code>"Health Insurance Portal"</code>.</li>
-                <li><strong>App URL</strong> — target application URL.</li>
-                <li><strong>Environment</strong> — staging / dev / production.</li>
-                <li><strong>Files</strong> — BRD, FSD or supporting documents.</li>
-                <li><strong>Credentials</strong> — login credentials for each role.</li>
-                <li><strong>API endpoints</strong> — Swagger URL or manual list.</li>
+                <li><strong>Project Metadata</strong> — Name, URL, and User-defined Assumptions.</li>
+                <li><strong>Credentials</strong> — Encrypted storage of roles and passwords.</li>
+                <li><strong>API Endpoints</strong> — Target endpoints to be tested against.</li>
             </ul>
-            <div class="example-block">
-                <div class="ex-label">Example — credentials</div>
-                Role: admin | Email: admin@test.com | Password: Admin@123<br>
-                Role: user | Email: user@test.com | Password: User@123
-            </div>
-            <p style="margin-top:10px;">The backend receives this as a single request and starts the ingestion pipeline.</p>
         </div>
 
         <hr class="divider">
 
         <div class="step-doc">
             <div class="step-doc-header">
-                <span class="step-badge badge-purple">Step 2</span>
-                <span class="step-doc-title">Validate inputs</span>
+                <span class="step-badge badge-teal">Step 3</span>
+                <span class="step-doc-title">Health & Auth Verification</span>
             </div>
-            <p>The system validates the request before any processing begins.</p>
+            <p>Critical validation step to ensure the testing environment is ready before processing knowledge.</p>
             <ul>
-                <li>Project name must exist</li>
-                <li>Application URL must be valid</li>
-                <li>At least one BRD document must be uploaded</li>
-                <li>Allowed formats: <code>.pdf</code> or <code>.csv</code></li>
-                <li>At least one credential set must be provided</li>
+                <li>System verifies application reachability.</li>
+                <li>System performs a mock login or auth-handshake using provided credentials.</li>
+                <li>Failure at this stage prevents unnecessary resource consumption (API/Tokens).</li>
             </ul>
-            <p>If validation fails the request is rejected and the ingestion pipeline stops immediately.</p>
         </div>
 
         <hr class="divider">
 
         <div class="step-doc">
             <div class="step-doc-header">
-                <span class="step-badge badge-purple">Step 3</span>
-                <span class="step-doc-title">Create project record</span>
+                <span class="step-badge badge-teal">Step 4 & 5</span>
+                <span class="step-doc-title">Azure Storage & Extraction</span>
             </div>
-            <p>A project entry is created in the database. This record becomes the reference point for the entire testing lifecycle.</p>
-            <div class="example-block">
-                <div class="ex-label">Example project record</div>
-                project_id: a3f2c1d4...<br>
-                project_name: Health Insurance Portal<br>
-                environment: staging<br>
-                status: ingestion_in_progress
-            </div>
-            <p style="margin-top:10px;">The system uses this project ID to associate documents, embeddings and test results.</p>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-teal">Step 4</span>
-                <span class="step-doc-title">URL health check</span>
-            </div>
-            <p>The system verifies that the application is reachable before processing documents.</p>
+            <p>Documents are stored for cross-phase accessibility and audited text extraction.</p>
             <ul>
-                <li>Send HTTP GET request to application URL</li>
-                <li>Timeout after 10 seconds</li>
-                <li>If response status ≥ 400 → ingestion stops</li>
+                <li><strong>Azure Blob Storage</strong> — Acts as the permanent repository for BRD/FWB/WSB files.</li>
+                <li><strong>Simplified Extraction</strong> — Per teacher's guidance, system uses direct text parsing (PDF/DOCX) only.</li>
             </ul>
             <div class="example-block">
-                <div class="ex-label">Example</div>
-                If the staging server is down the system returns:<br>
-                <em>"Application not reachable. Please verify the URL."</em>
+                <div class="ex-label">Storage Link</div>
+                Azure URL: <code>https://mystorage.blob.core.windows.net/projects/brd_v1.pdf</code>
             </div>
         </div>
 
@@ -347,141 +283,18 @@
 
         <div class="step-doc">
             <div class="step-doc-header">
-                <span class="step-badge badge-teal">Step 5</span>
-                <span class="step-doc-title">Process uploaded files (in memory)</span>
+                <span class="step-badge badge-blue">Step 6, 7 & 8</span>
+                <span class="step-doc-title">RAG Knowledge Pipeline</span>
             </div>
-            <p>Uploaded documents are processed directly in memory. No raw files are written to disk or external storage.</p>
+            <p>Text is prepared for the LLM agents in Phase 2 using the RAG architecture.</p>
             <ul>
-                <li>Files are read from the request stream</li>
-                <li>Stored temporarily in memory buffers</li>
-                <li>Immediately passed to the extraction pipeline</li>
+                <li><strong>Chunking</strong> — Breaks document text and assumptions into searchable fragments.</li>
+                <li><strong>Embeddings</strong> — Numerical representation of semantic meaning.</li>
+                <li><strong>pgvector Integration</strong> — Embeddings are stored in PostgreSQL, allowing for relational filtering (e.g., retrieving only chunks belonging to a specific Project ID).</li>
             </ul>
-            <div class="example-block">
-                <div class="ex-label">Example</div>
-                User uploads <code>brd.pdf</code> → FastAPI reads file → stored in memory → sent to extraction.
-            </div>
         </div>
 
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-teal">Step 6</span>
-                <span class="step-doc-title">Detect file type</span>
-            </div>
-            <p>The system determines how the document should be processed.</p>
-            <ul>
-                <li>PDF documents → processed with PyMuPDF</li>
-                <li>CSV files → parsed using pandas</li>
-                <li>Scanned PDFs → routed to Vision LLM OCR</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Detection rule</div>
-                If extracted text length is extremely small on a multi-page PDF, the document is classified as scanned.
-            </div>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-teal">Step 7</span>
-                <span class="step-doc-title">Extract raw text</span>
-            </div>
-            <p>The system extracts textual content from the uploaded documents.</p>
-            <ul>
-                <li>Text PDFs → PyMuPDF extraction</li>
-                <li>Scanned PDFs → OCR using Vision LLM</li>
-                <li>CSV → converted to text format</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Output</div>
-                All extraction paths produce a single plain text string representing the document content.
-            </div>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-blue">Step 8</span>
-                <span class="step-doc-title">Chunk document text</span>
-            </div>
-            <p>The extracted document text is divided into smaller chunks before embedding generation.</p>
-            <ul>
-                <li>Typical chunk size: 300–800 tokens</li>
-                <li>Overlap between chunks preserves context</li>
-                <li>Improves semantic search accuracy</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Example chunks</div>
-                Chunk 1 → "User must be above 18 years old"<br>
-                Chunk 2 → "Password must contain at least 8 characters"
-            </div>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-blue">Step 9</span>
-                <span class="step-doc-title">Generate embeddings</span>
-            </div>
-            <p>Each chunk is converted into a vector embedding using an embedding model.</p>
-            <ul>
-                <li>Embeddings represent semantic meaning</li>
-                <li>Used for similarity search in RAG</li>
-                <li>Forms the knowledge base for requirement retrieval</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Example embedding</div>
-                chunk_text: "User must be above 18 years old"<br>
-                embedding: [0.012, -0.441, 0.332, ...]
-            </div>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-coral">Step 10</span>
-                <span class="step-doc-title">Store embeddings in vector database</span>
-            </div>
-            <p>The generated embeddings are stored in a vector database such as pgvector.</p>
-            <ul>
-                <li>Each chunk is stored with its embedding</li>
-                <li>Allows semantic search against BRD content</li>
-                <li>Supports the RAG architecture used in Phase 2</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Vector DB record</div>
-                project_id: a3f2c1d4...<br>
-                chunk_text: "User must be above 18 years old"<br>
-                embedding: vector(1536)
-            </div>
-        </div>
-
-        <hr class="divider">
-
-        <div class="step-doc">
-            <div class="step-doc-header">
-                <span class="step-badge badge-blue">Step 11</span>
-                <span class="step-doc-title">Update project status</span>
-            </div>
-            <p>Once ingestion and embedding generation are completed, the project status is updated.</p>
-            <ul>
-                <li>Status changes to <code>ingestion_complete</code></li>
-                <li>This signals Phase 2 agents to begin processing</li>
-                <li>Vector database now contains BRD knowledge</li>
-            </ul>
-            <div class="example-block">
-                <div class="ex-label">Final system state</div>
-                projects table → status = ingestion_complete<br>
-                vector database → embeddings stored<br>
-                credentials table → encrypted login credentials
-            </div>
-            <p style="margin-top:10px;">Phase 2 agents will now use RAG to retrieve BRD context and generate structured requirements and test cases.</p>
-        </div>
-
-    </div> </div> </body>
+    </div>
+</div>
+</body>
 </html>
